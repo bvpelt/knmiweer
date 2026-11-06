@@ -20,7 +20,7 @@ struct Args {
     date: Option<String>,
 
     /// Databron: opendata (bestandssync) of edr (dagquery)
-    #[arg(long, value_enum, default_value_t = Source::Opendata)]
+    #[arg(long, value_enum, default_value_t = Source::Edr)]
     source: Source,
 
     /// Breedtegraad van de locatie (default: Veenendaal)
