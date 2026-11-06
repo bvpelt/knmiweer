@@ -35,7 +35,7 @@ jobs:
         run: cargo install cargo-llvm-cov --locked --force
 
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
