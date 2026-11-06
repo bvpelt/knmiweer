@@ -25,3 +25,4 @@ rustc-ice-*.txt
 temperatuur.csv
 knmi_state.json
 setenv.bash
+dagstatistiek.csv
