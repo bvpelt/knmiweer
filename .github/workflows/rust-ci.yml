@@ -23,6 +23,9 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v6
 
+      - name: Install netcdf/hdf5 system libraries
+        run: sudo apt-get update && sudo apt-get install -y libnetcdf-dev libhdf5-dev
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
