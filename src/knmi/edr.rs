@@ -34,6 +34,8 @@ pub enum EdrError {
     BadShape(String),
     #[error("geen temperatuurwaarden gevonden")]
     NoData,
+    #[error("KNMI-quota overschreden")]
+    QuotaExceeded,
 }
 
 // ---------------- CoverageJSON (minimale parsing) ----------------
@@ -226,6 +228,11 @@ impl KnmiEdr {
         let status = resp.status();
         let body = resp.text()?;
         if !status.is_success() {
+            // Quota: herkenbaar en niet herstelbaar door een ander station
+            // te proberen — direct stoppen.
+            if status == reqwest::StatusCode::FORBIDDEN && body.contains("Quota exceeded") {
+                return Err(EdrError::QuotaExceeded);
+            }
             return Err(EdrError::Api {
                 status,
                 body: body.chars().take(300).collect(),

@@ -16,3 +16,4 @@ netcdf = "0.12.1"
 tempfile = "3"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+postgres = {version = "0.19.14", features = ["with-chrono-0_4"] }

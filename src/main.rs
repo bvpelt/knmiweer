@@ -1,17 +1,32 @@
 mod knmi;
 use clap::Parser;
 use clap::ValueEnum;
-use knmi::Reading;
+use knmi::edr::EdrError;
 use knmi::opendata::KnmiOpenData;
+use knmi::sink::{CsvSink, PgSink, Sink};
 use knmi::state::{State, first_filename_of_day_before};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
+
+/// Exit-codes voor scripting: 0 ok, 1 algemene fout, 2 ongeldige
+/// datum, 3 quota overschreden, 4 geen data voor deze dag.
+mod exitcode {
+    pub const FOUT: i32 = 1;
+    pub const ONGELDIGE_DATUM: i32 = 2;
+    pub const QUOTA: i32 = 3;
+    pub const GEEN_DATA: i32 = 4;
+}
+
+/// Geen enkel naburig station had data (niet hetzelfde als een fout).
+#[derive(Debug, thiserror::Error)]
+#[error("geen van de dichtstbijzijnde stations heeft temperatuurdata voor deze dag")]
+struct GeenDataError;
 
 #[derive(Parser, Debug)]
 #[command(
     author,
     version,
-    about = "KNMI 10-minuutstemperatuur als CSV (Open Data of EDR API)"
+    about = "KNMI 10-minuutstemperatuur naar CSV of Postgres (Open Data of EDR API)"
 )]
 struct Args {
     /// Startdag voor de EERSTE run (YYYY-MM-DD), als er nog geen state is.
@@ -23,6 +38,10 @@ struct Args {
     #[arg(long, value_enum, default_value_t = Source::Edr)]
     source: Source,
 
+    /// Uitvoerdoel: csv-bestand of postgres-database
+    #[arg(long, value_enum, default_value_t = Storage::Database)]
+    storage: Storage,
+
     /// Breedtegraad van de locatie (default: Veenendaal)
     #[arg(long, default_value_t = 52.030)]
     lat: f64,
@@ -31,9 +50,14 @@ struct Args {
     #[arg(long, default_value_t = 5.553)]
     lon: f64,
 
-    /// CSV-uitvoerbestand (rijen worden toegevoegd)
+    /// CSV-uitvoerbestand (alleen bij --storage csv)
     #[arg(short, long, default_value = "temperatuur.csv")]
     output: String,
+
+    /// Postgres-connectiestring (alleen bij --storage database).
+    /// Default: $KNMI_PG_URL, anders postgresql://postgres@localhost/weerdata
+    #[arg(short = 'D', long)]
+    pg_url: Option<String>,
 
     /// Statebestand met de laatst verwerkte bestandsnaam
     #[arg(short, long, default_value = "knmi_state.json")]
@@ -62,19 +86,75 @@ enum Source {
     Edr,
 }
 
+#[derive(Clone, Debug, ValueEnum)]
+enum Storage {
+    Csv,
+    Database,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    // RUST_LOG bepaalt het niveau; default info.
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::new(&args.log_level))
         .init();
 
-    let sep = args.sep.as_bytes().first().copied().unwrap_or(b',');
+    // Invoervalidatie vóór alles: --date moet een geldige
+    // kalenderdatum in YYYY-MM-DD zijn.
+    if let Some(d) = &args.date {
+        if chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_err() {
+            error!(
+                "Fout: ongeldige startdatum '{d}' — gebruik een geldige kalenderdatum in formaat YYYY-MM-DD"
+            );
+            std::process::exit(exitcode::ONGELDIGE_DATUM);
+        }
+    }
 
-    match args.source {
-        Source::Opendata => run_opendata(&args, sep)?,
-        Source::Edr => run_edr(&args, sep)?,
+    // 2. Sink pas ná validatie (geen DB-connectie bij foute invoer).
+    let mut sink: Box<dyn knmi::sink::Sink> = match args.storage {
+        Storage::Csv => {
+            let sep = args.sep.as_bytes().first().copied().unwrap_or(b',');
+            Box::new(CsvSink::new(&args.output, sep)?)
+        }
+        Storage::Database => {
+            let url = args
+                .pg_url
+                .clone()
+                .or_else(|| std::env::var("KNMI_PG_URL").ok())
+                .unwrap_or_else(|| "postgresql://postgres@localhost/weerdata".to_string());
+            info!(doel = "weerdata", "verbinden met Postgres");
+            Box::new(PgSink::connect(&url)?)
+        }
+    };
+
+    // 3. Runnen en fouten op exit codes mappen.
+    let result = match args.source {
+        Source::Opendata => run_opendata(&args, sink.as_mut()),
+        Source::Edr => run_edr(&args, sink.as_mut()),
+    };
+
+    if let Err(e) = result {
+        if e.downcast_ref::<EdrError>()
+            .is_some_and(|x| matches!(x, EdrError::QuotaExceeded))
+        {
+            error!(
+                "KNMI-quota overschreden — stoppen. Overweeg minder aanvragen per tijdseenheid."
+            );
+            std::process::exit(exitcode::QUOTA);
+        }
+        if e.downcast_ref::<GeenDataError>().is_some() {
+            warn!("geen station met data voor deze dag — dag overslaan");
+            std::process::exit(exitcode::GEEN_DATA);
+        }
+
+        // Alle overige fouten: expliciet exit 1 met de foutenketen.
+        error!("onherstelbare fout: {e}");
+        let mut bron = std::error::Error::source(&*e);
+        while let Some(b) = bron {
+            error!("  veroorzaakt door: {b}");
+            bron = b.source();
+        }
+        std::process::exit(exitcode::FOUT);
     }
     Ok(())
 }
@@ -82,7 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 // ------------------------------------------------------------
 // Open Data API — incrementele bestandssync
 // ------------------------------------------------------------
-fn run_opendata(args: &Args, sep: u8) -> Result<(), Box<dyn std::error::Error>> {
+fn run_opendata(args: &Args, sink: &mut dyn Sink) -> Result<(), Box<dyn std::error::Error>> {
     let client = KnmiOpenData::new(std::env::var("KNMI_API_KEY")?);
     let mut state = State::load(&args.state)?;
     check_loc(&state, args)?;
@@ -115,25 +195,18 @@ fn run_opendata(args: &Args, sep: u8) -> Result<(), Box<dyn std::error::Error>> 
         return Ok(());
     }
 
-    // 3. Per bestand: download -> extract -> CSV -> state.
-    // Rerun-bescherming: rijen die al in de CSV staan worden overgeslagen.
-    let mut seen = knmi::csv_out::existing_keys(&args.output)?;
-
+    // 3. Per bestand: download -> extract -> sink -> state.
     let mut total_rows = 0usize;
-    for (i, filename) in files.iter().enumerate() {
+    for filename in files.iter() {
         let bytes = client.download_file(filename)?;
         match knmi::extract::extract_temperature(&bytes, args.lat, args.lon) {
             Ok(rows) => {
-                let nieuw: Vec<knmi::Reading> = rows
-                    .into_iter()
-                    .filter(|r| seen.insert(knmi::csv_out::row_key(r)))
-                    .collect();
-                if !nieuw.is_empty() {
-                    knmi::csv_out::append_rows(&args.output, sep, &nieuw)?;
-                    total_rows += nieuw.len();
-                    debug!(bestand = %filename, metingen = nieuw.len(), "verwerkt");
+                let nieuw = sink.write(&rows)?;
+                total_rows += nieuw;
+                if nieuw > 0 {
+                    debug!(bestand = %filename, metingen = nieuw, "verwerkt");
                 } else {
-                    debug!(bestand = %filename, "alle metingen stonden er al in");
+                    debug!(bestand = %filename, "alle metingen bestonden al");
                 }
             }
             Err(e) => {
@@ -148,7 +221,6 @@ fn run_opendata(args: &Args, sep: u8) -> Result<(), Box<dyn std::error::Error>> 
     info!(
         rijen = total_rows,
         laatste = state.last_filename().cloned().unwrap_or_default(),
-        doel = &args.output,
         "klaar (opendata)"
     );
     Ok(())
@@ -157,7 +229,7 @@ fn run_opendata(args: &Args, sep: u8) -> Result<(), Box<dyn std::error::Error>> 
 // ------------------------------------------------------------
 // EDR API — dagquery, incrementeel per dag
 // ------------------------------------------------------------
-fn run_edr(args: &Args, sep: u8) -> Result<(), Box<dyn std::error::Error>> {
+fn run_edr(args: &Args, sink: &mut dyn Sink) -> Result<(), Box<dyn std::error::Error>> {
     let client = knmi::edr::KnmiEdr::new(std::env::var("KNMI_EDR_API_KEY")?);
     let mut state = State::load(&args.state)?;
     check_loc(&state, args)?;
@@ -182,12 +254,9 @@ fn run_edr(args: &Args, sep: u8) -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
-    // 2. Dichtstbijzijnde station + temperatuurreeks voor die dag.
     // 2. Dichtstbijzijnde stations op afstand proberen tot er data is.
     let mut rows: Option<Vec<knmi::Reading>> = None;
     let mut station_used = String::new();
-    // Rerun-bescherming: rijen die al in de CSV staan worden overgeslagen.
-    let mut seen = knmi::csv_out::existing_keys(&args.output)?;
 
     for (station, _afstand) in client
         .nearest_stations(args.lon, args.lat)?
@@ -209,25 +278,20 @@ fn run_edr(args: &Args, sep: u8) -> Result<(), Box<dyn std::error::Error>> {
     let rows =
         rows.ok_or("geen van de dichtstbijzijnde stations heeft temperatuurdata voor deze dag")?;
     info!(station = %station_used, "station met data gevonden");
-    let rows: Vec<Reading> = rows
-        .into_iter()
-        .filter(|r| seen.insert(knmi::csv_out::row_key(r)))
-        .collect();
-    if rows.is_empty() {
-        info!("alle metingen voor deze dag stonden al in de CSV — niets toegevoegd");
-        return Ok(());
+
+    // 3. Wegschrijven + state bijwerken.
+    let nieuw = sink.write(&rows)?;
+    if nieuw == 0 {
+        info!("alle metingen voor deze dag bestonden al — niets toegevoegd");
     }
-    // 3. CSV + state bijwerken.
-    knmi::csv_out::append_rows(&args.output, sep, &rows)?;
     state.set_last_edr_day(day.clone());
     state.set_loc(args.lat, args.lon);
     state.save(&args.state)?;
 
     info!(
-        rijen = rows.len(),
+        rijen = nieuw,
         dag = %day,
         station = %station_used,
-        doel = &args.output,
         "klaar (edr)"
     );
     Ok(())
@@ -238,8 +302,8 @@ fn check_loc(state: &knmi::state::State, args: &Args) -> Result<(), Box<dyn std:
         if (slat - args.lat).abs() > 1e-6 || (slon - args.lon).abs() > 1e-6 {
             if !args.force {
                 return Err(format!(
-                    "Deze state/CSV hoort bij locatie ({slat}, {slon}), \
-                     maar je vroeg ({}, {}). Gebruik een apart --state/--output, \
+                    "Deze state hoort bij locatie ({slat}, {slon}), \
+                     maar je vroeg ({}, {}). Gebruik een apart --state, \
                      of geef --force als dit echt de bedoeling is.",
                     args.lat, args.lon
                 )

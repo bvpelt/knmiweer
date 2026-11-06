@@ -6,7 +6,7 @@
 use super::Reading;
 use chrono::{Duration as ChDuration, NaiveDateTime};
 use netcdf::Extents;
-use tracing::{debug, info, trace};
+use tracing::{info, trace};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractError {

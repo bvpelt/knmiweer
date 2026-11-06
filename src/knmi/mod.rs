@@ -2,6 +2,7 @@ pub mod csv_out;
 pub mod edr;
 pub mod extract;
 pub mod opendata;
+pub mod sink;
 pub mod state;
 
 /// Eén meetwaarde, brononafhankelijk. Dit is wat in de CSV belandt.

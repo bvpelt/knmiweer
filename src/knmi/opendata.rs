@@ -4,7 +4,7 @@
 
 use serde::Deserialize;
 use std::time::Duration;
-use tracing::{debug, info, trace};
+use tracing::{info, trace};
 
 /// Let op de trailing slash: Url::join() vervangt anders het
 /// laatste segment ("v1") van de basis.
