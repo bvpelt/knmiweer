@@ -1,0 +1,18 @@
+[package]
+name = "knmiweer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+reqwest = { version = "0.13.5", features = ["blocking", "json"] }
+serde = { version = "1.0.229", features = ["derive"]} 
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+url = "2"
+chrono = { version = "0.4", features = ["serde"] }
+csv = "1"
+netcdf = "0.12.1"
+tempfile = "3"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
