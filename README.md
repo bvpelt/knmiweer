@@ -46,3 +46,21 @@ netcdf = "3"          // vereist libnetcdf: `sudo apt install libnetcdf-dev`
 //   rm knmi_state.json temperatuur.csv
 //   cargo run -- --date 2026-10-01 --lat 52.030 --lon 5.553
 ```
+
+## Stations
+
+```text
+0 - 20000 - 0 - 06275
+│    │      │    └── WMO station number (06275 = Deelen)
+│    │      └─────── Organization-local series
+│    └────────────── WMO block number (20000 = Netherlands, block 06 series)
+└─────────────────── Issuing agency (0 = WMO member)
+```
+
+```bash
+curl -s -H "Authorization: $KNMI_EDR_API_KEY" \
+  "https://api.dataplatform.knmi.nl/edr/v1/collections/10-minute-in-situ-meteorological-observations/locations" \
+  | jq '.features[] | select(.id == "0-20000-0-06275")'
+```
+
+[api usage](https://developer.dataplatform.knmi.nl/member/)

@@ -210,7 +210,15 @@ fn run_opendata(args: &Args, sink: &mut dyn Sink) -> Result<(), Box<dyn std::err
                 }
             }
             Err(e) => {
-                error!(bestand = %filename, fout = %e, "extract mislukt, ga door");
+                error!(
+                    bestand = %filename,
+                    fout = %e,
+                    "WEGSCHRIJVEN MISLUKT — state NIET opgeslagen, \
+                     dit bestand wordt bij herstart opnieuw verwerkt"
+                );
+                // Wegschrijven is structureel (database weg,
+                // schijf vol): stoppen, niet doorgaan.
+                return Err(e.into());
             }
         }
         state.set_last_filename(filename.clone());
@@ -271,19 +279,44 @@ fn run_edr(args: &Args, sink: &mut dyn Sink) -> Result<(), Box<dyn std::error::E
                 break;
             }
             Ok(_) => warn!(station = %station, "lege reeks, volgend station proberen"),
+            // Quota is niet station-gebonden: meteen stoppen, state NIET bijwerken.
+            Err(EdrError::QuotaExceeded) => return Err(EdrError::QuotaExceeded.into()),
             Err(e) => warn!(station = %station, fout = %e, "mislukt, volgend station proberen"),
         }
     }
 
-    let rows =
-        rows.ok_or("geen van de dichtstbijzijnde stations heeft temperatuurdata voor deze dag")?;
+    let rows = match rows {
+        Some(r) => r,
+        None => {
+            // Geen enkel station had data. Daar kan het programma niets
+            // aan veranderen: de dag telt als verwerkt, zodat een run
+            // zonder --date naar de VOLGENDE dag gaat in plaats van
+            // eeuwig op deze dag te blijven steken.
+            state.set_last_edr_day(day.clone());
+            state.set_loc(args.lat, args.lon);
+            state.save(&args.state)?;
+            warn!(dag = %day, "geen station met data — dag gemarkeerd als verwerkt");
+            return Err(GeenDataError.into());
+        }
+    };
     info!(station = %station_used, "station met data gevonden");
 
     // 3. Wegschrijven + state bijwerken.
-    let nieuw = sink.write(&rows)?;
+    let nieuw = sink.write(&rows).map_err(|e| {
+        error!(
+            dag = %day,
+            station = %station_used,
+            fout = %e,
+            "WEGSCHRIJVEN MISLUKT — dag NIET in de state opgeslagen, \
+             transactie teruggedraaid. Run later opnieuw met: \
+             cargo run -- --date {day}"
+        );
+        e
+    })?;
     if nieuw == 0 {
         info!("alle metingen voor deze dag bestonden al — niets toegevoegd");
     }
+    // Pas hier, ná succesvol wegschrijven:
     state.set_last_edr_day(day.clone());
     state.set_loc(args.lat, args.lon);
     state.save(&args.state)?;

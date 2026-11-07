@@ -8,7 +8,7 @@ use chrono::{Duration as ChDuration, NaiveDate, NaiveDateTime};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::time::Duration;
-use tracing::trace;
+use tracing::debug;
 
 /// Trailing slash vanwege Url::join()-semantiek.
 pub const BASE: &str = "https://api.dataplatform.knmi.nl/edr/v1/";
@@ -118,6 +118,7 @@ impl KnmiEdr {
         if stations.is_empty() {
             return Err(EdrError::BadShape("geen locations gevonden".into()));
         }
+        debug!(lon, lat, stations = ?stations, "dichtstbijzijnde stations");
         Ok(stations)
     }
 
@@ -147,7 +148,7 @@ impl KnmiEdr {
             q.append_pair("parameter-name", PARAM_TEMPERATURE);
         }
 
-        trace!(url = %url, "EDR-query");
+        debug!(url = %url, "EDR-query");
         let json: serde_json::Value = self.get_json(url)?;
         //trace!(url = %url, "EDR-response binnengehaald");
 

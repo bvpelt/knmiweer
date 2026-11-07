@@ -98,7 +98,13 @@ impl Sink for PgSink {
             let n = tx.execute(&self.insert, &[&datum, &tijd, &r.station, &temp])?;
             nieuw += n as usize;
         }
-        tx.commit()?;
+
+        if let Err(e) = tx.commit() {
+            // Bij een mislukte commit is de transactie teruggedraaid:
+            // er staat niets in de database.
+            debug!("commit mislukt, transactie teruggedraaid: {e}");
+            return Err(e.into());
+        }
 
         if nieuw == 0 {
             debug!("DB: alle metingen stonden er al in");
