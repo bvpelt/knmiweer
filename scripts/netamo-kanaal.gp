@@ -1,10 +1,10 @@
-set terminal png size 1200,600
+set terminal png size 1920,1200
 if (!exists("OUTFILE")) OUTFILE = "temp.png"
 set output OUTFILE
 set datafile separator "\t"
 set xdata time
-set timefmt "%Y-%m-%d %H:%M"
-set format x "%d-%b %H:%M"
+set timefmt "%Y-%m-%d"
+set format x "%d-%b-%Y"
 set xtics rotate by -45
 set ylabel "Temperatuur (°C)"
 set title "Temperatuur per uur: min / avg / max"
