@@ -64,3 +64,7 @@ curl -s -H "Authorization: $KNMI_EDR_API_KEY" \
 ```
 
 [api usage](https://developer.dataplatform.knmi.nl/member/)
+
+```bash
+./procesjaar.bash 2023 > a.a 2>&1
+```
