@@ -12,7 +12,7 @@ plot_kanaal() {
            ROUND(AVG($kolom)::numeric, 1),
            ROUND(MAX($kolom)::numeric, 1)
     FROM kerkzaal_metingen
-    where extract(month from gemeten_op) = 10
+ --   where extract(month from gemeten_op) = 10
     GROUP BY 1 ORDER BY 1"
 
     if [ $debug -eq 1 ]; then
