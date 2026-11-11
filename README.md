@@ -68,3 +68,6 @@ curl -s -H "Authorization: $KNMI_EDR_API_KEY" \
 ```bash
 ./procesjaar.bash 2023 > a.a 2>&1
 ```
+
+# Gnuplot
+See [link](http://www.gnuplot.info/docs_6.1/gnuplot6.html)
