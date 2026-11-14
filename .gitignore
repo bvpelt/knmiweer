@@ -26,5 +26,6 @@ temperatuur.csv
 knmi_state.json
 setenv.bash
 dagstatistiek.csv
+dagoverzicht.*
 a.a
 scripts/*.png

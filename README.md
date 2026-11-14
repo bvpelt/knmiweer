@@ -71,3 +71,8 @@ curl -s -H "Authorization: $KNMI_EDR_API_KEY" \
 
 # Gnuplot
 See [link](http://www.gnuplot.info/docs_6.1/gnuplot6.html)
+
+From the script directory
+```bash
+DEBUG=1 ./netamo-kanaal.bash 
+```

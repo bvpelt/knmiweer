@@ -1,6 +1,6 @@
 #!/bin/bash
 
-debug=$DEBUG
+debug=${DEBUG:-0}
 
 plot_kanaal() {
     local kolom="$1" bestand="$2"

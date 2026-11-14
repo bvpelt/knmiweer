@@ -1,7 +1,7 @@
 #!/bin/bash
-
-#!/bin/bash
 # Gebruik: ./netamo-kanaal-dag.bash 2026-09-15 [output-prefix]
+
+debug=${DEBUG:-0}
 
 DAG="${1:?Gebruik: $0 <datum YYYY-MM-DD> [prefix]}"
 
@@ -10,14 +10,19 @@ plot_kanaal() {
     local datbestand
     datbestand=$(mktemp /tmp/uurdata.XXXXXX.dat)
 
-    psql -d weerdata -At -F $'\t' -c "
-    SELECT to_char(date_trunc('hour', gemeten_op AT TIME ZONE 'Europe/Paris'), 'YYYY-MM-DD HH24:MI'),
+    QUERY="SELECT to_char(date_trunc('hour', gemeten_op AT TIME ZONE 'Europe/Paris'), 'YYYY-MM-DD HH24:MI'),
            ROUND(MIN($kolom)::numeric, 1),
            ROUND(AVG($kolom)::numeric, 1),
            ROUND(MAX($kolom)::numeric, 1)
     FROM kerkzaal_metingen
     WHERE DATE(gemeten_op AT TIME ZONE 'Europe/Paris') = '$DAG'
-    GROUP BY 1 ORDER BY 1" > "$datbestand"
+    GROUP BY 1 ORDER BY 1"
+
+    if [ $debug -eq 1 ]; then
+        echo "Query: $QUERY"
+    fi
+
+    psql -d weerdata -At -F $'\t' -c "$QUERY" > "$datbestand"
 
     gnuplot -e "OUTFILE='$bestand'; DATFILE='$datbestand'; \
                 XMIN='${DAG} 00:00'; XMAX='${DAG} 23:00'" netamo-kanaal-dag.gp
