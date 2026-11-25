@@ -29,3 +29,4 @@ dagstatistiek.csv
 dagoverzicht.*
 a.a
 scripts/*.png
+.venv

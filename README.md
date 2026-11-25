@@ -25,6 +25,66 @@ See https://pinguin-01-s-team.postman.co/workspace/My-Workspace~f0ccf46d-5f2e-42
 
 https://www.phind.com 
 
+## Data
+
+| Onderdeel       | Geladen                              |
+|-----------------|--------------------------------------|
+| eview (gas)     | 2023-05-14 02:00 to 2026-01-01 00:00 |
+| eview (electra) | 2023-03-18 01:00 to 2026-01-01 00:00 |
+| netamo          | 2025-07-14 17:15 to 2026-11-01 23:45 |
+| metingen (knmi) | 2023-01-01       to 2026-11-06       |
+
+Alle data naar dagoverzicht exporteren kan nadat alle data geladen zijn. Voor eview data moet eerst een python virtual environment gemaakt worden zie [hier](#eview)
+```bash
+./scripts/export_dagoverzicht.bash 
+```
+
+### Netamo
+Ophalen data via: https://home.netatmo.com/settings/data-management/download/settings-download-data
+
+![settings](./doc/netamo-retrieve-data.png)
+
+De download levert een zip file op.
+Rename en Verplaats de Weather.csv naar data/netamo-&lt;from&gt;-to-&lt;to&gt; where &lt;from&gt; and &lt;to&gt; are dates in format yyyy-mm-dd.
+
+Gebruikt script [import-netamo](./scripts/import-netamo.bash) om de gegevens te importeren.
+
+Voorbeeld:
+
+```bash
+ ./scripts/import-netamo.bash ./data/netamo-2026-01-01-to-2026-03-01.csv 
+BEGIN
+CREATE TABLE
+COPY 2880
+INSERT 0 2832
+COMMIT
+Klaar: 2880 rijen verwerkt uit ./data/netamo-2026-01-01-to-2026-03-01.csv (dubbele timestamps overgeslagen).
+```
+
+### EView
+Ophalen data via: https://www.eview.nl/#/analysis 
+
+![settings](./doc/eview-retrieve-data.png)
+
+De download levert een bestand meetdata.xlxs op.
+
+Requirements 
+- a python virtual envronment
+- installed packages
+#### Python veritual environment
+```bash
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+```
+#### Installing packages
+```bash
+.venv/bin/pip install openpyxl
+```
+
+#### Execution
+```bash
+PYTHON_BIN="$PWD/.venv/bin/python" ./scripts/import-eview.bash ./data/meetdata-2024-01-01-to-2025-01-01.xlsx
+```
 
 ## Query
 

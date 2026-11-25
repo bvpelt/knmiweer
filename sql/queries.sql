@@ -364,3 +364,8 @@ FROM buiten b
 FULL OUTER JOIN kerk     k ON k.datum = b.datum
 FULL OUTER JOIN energie  e ON e.datum = COALESCE(b.datum, k.datum)
 ORDER BY 1;
+
+---
+--- Overzicht als csv-bestand
+---
+--- psql -d weerdata --csv -c "SELECT * FROM dagoverzicht ORDER BY datum" -o dagoverzicht.csv
